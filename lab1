@@ -1,0 +1,51 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# параметры
+g = 9.81
+h0 = 1.0          # начальная высота
+k = 0.3           # коэффициент потерь
+m = 1.0           # масса
+eps = 1e-4        # прекращение процесса
+
+# функция моделирования
+def simulate(h0, k):
+    h = h0
+    total_time = 0
+    heights = []
+
+    while h > eps:
+        heights.append(h)
+
+        # время этого подпрыжка
+        t = 2 * np.sqrt(2 * h / g)
+        total_time += t
+
+        # новая высота после удара
+        v = np.sqrt(2 * g * h)
+        h = h - (k / (m * g)) * (v ** 0.5)
+
+        if h < 0:
+            break
+
+    return total_time, heights
+
+
+# моделируем зависимость времени от коэффициента потерь
+ks = np.linspace(0.05, 0.6, 50)
+times = []
+
+for K in ks:
+    T, _ = simulate(h0, K)
+    times.append(T)
+
+plt.plot(ks, times)
+plt.xlabel("Коэффициент потерь k")
+plt.ylabel("Полное время движения T, сек")
+plt.title("Зависимость времени процесса от параметра k")
+plt.grid(True)
+plt.show()
+
+# считаем полное время для исходных параметров
+T, hs = simulate(h0, k)
+print(f"Полное время движения: {T:.3f} сек")
