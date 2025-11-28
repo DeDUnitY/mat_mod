@@ -1,0 +1,69 @@
+# visualize_system.py
+import numpy as np
+import matplotlib.pyplot as plt
+
+def f(state, a):
+    x,y,z = state
+    return np.array([a*y - z**2, a*z - x**2, a*x - y**2])
+
+def rk4_step(fun, s, dt, a):
+    k1 = fun(s, a)
+    k2 = fun(s + 0.5*dt*k1, a)
+    k3 = fun(s + 0.5*dt*k2, a)
+    k4 = fun(s + dt*k3, a)
+    return s + dt*(k1 + 2*k2 + 2*k3 + k4)/6.0
+
+def integrate(s0, a, T=20.0, dt=0.01):
+    steps = int(T/dt)
+    traj = np.zeros((steps+1, 3))
+    traj[0] = s0
+    s = s0.copy()
+    for i in range(steps):
+        s = rk4_step(f, s, dt, a)
+        traj[i+1] = s
+    return traj
+
+a_values = [1.0, -1.0]
+initial_conditions = [
+    np.array([0.1, 0.0, 0.0]),
+    np.array([0.5, 0.2, -0.1]),
+    np.array([1.0, 0.8, 0.9]),
+    np.array([-0.2, 0.3, 0.4]),
+    np.array([2.0, 1.5, -1.0])
+]
+
+for a in a_values:
+    # 3D plot
+    fig = plt.figure(figsize=(8,6))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_title(f"Trajectories for a = {a}")
+    ax.set_xlabel("x"); ax.set_ylabel("y"); ax.set_zlabel("z")
+    eq1 = np.array([0.0,0.0,0.0])
+    eq2 = np.array([a,a,a])
+    ax.scatter(eq1[0],eq1[1],eq1[2], s=80, marker='o', label='(0,0,0)')
+    ax.scatter(eq2[0],eq2[1],eq2[2], s=80, marker='^', label='(a,a,a)')
+    for s0 in initial_conditions:
+        traj = integrate(s0, a, T=20.0, dt=0.01)
+        ax.plot(traj[:,0], traj[:,1], traj[:,2])
+        ax.plot([traj[0,0]],[traj[0,1]],[traj[0,2]], marker='o')
+    lim = 3.0
+    ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim); ax.set_zlim(-lim, lim)
+    ax.legend()
+    plt.tight_layout()
+    plt.savefig(f"trajectories_a{int(a)}.png", dpi=150)
+    plt.close(fig)
+
+    # 2D projection x-y
+    fig, ax = plt.subplots(figsize=(6,5))
+    ax.set_title(f"x-y projection, a={a}")
+    ax.set_xlabel("x"); ax.set_ylabel("y")
+    for s0 in initial_conditions:
+        traj = integrate(s0, a, T=20.0, dt=0.01)
+        ax.plot(traj[:,0], traj[:,1])
+        ax.plot(traj[0,0], traj[0,1], marker='o')
+    ax.set_xlim(-3,3); ax.set_ylim(-3,3)
+    plt.tight_layout()
+    plt.savefig(f"xy_a{int(a)}.png", dpi=150)
+    plt.close(fig)
+
+print("Saved files: trajectories_a1.png, xy_a1.png, trajectories_a-1.png, xy_a-1.png")
