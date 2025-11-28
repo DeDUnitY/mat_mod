@@ -4,78 +4,104 @@ import matplotlib.pyplot as plt
 # Параметры системы
 m1 = 2.0  # кг
 m2 = 1.0  # кг
-v2 = 0.0  # м/с
+v2 = 3.0  # м/с (второй шар тоже движется)
 
 # Диапазон скоростей первого шара
 v1_range = np.linspace(1, 10, 100)
 
-# Случай 1: останавливается первый шар
+# Случай 1: останавливается первый шар (u1 = 0)
 u1_case1 = np.zeros_like(v1_range)
 u2_case1 = (m1*v1_range + m2*v2)/m2
-e_case1 = (m1*v1_range + m2*v2)/(m2*(v1_range - v2))
+e_case1 = (u2_case1 - u1_case1)/(v1_range - v2)
 
 # Энергии для случая 1
 E_before_case1 = 0.5*m1*v1_range**2 + 0.5*m2*v2**2
 E_after_case1 = 0.5*m1*u1_case1**2 + 0.5*m2*u2_case1**2
 delta_E_case1 = E_before_case1 - E_after_case1
 
-# Случай 2: останавливается второй шар
+# Случай 2: останавливается второй шар (u2 = 0)
 u2_case2 = np.zeros_like(v1_range)
 u1_case2 = (m1*v1_range + m2*v2)/m1
-e_case2 = -(m1*v1_range + m2*v2)/(m1*(v1_range - v2))
+e_case2 = (u2_case2 - u1_case2)/(v1_range - v2)
 
 # Энергии для случая 2
 E_before_case2 = 0.5*m1*v1_range**2 + 0.5*m2*v2**2
 E_after_case2 = 0.5*m1*u1_case2**2 + 0.5*m2*u2_case2**2
 delta_E_case2 = E_before_case2 - E_after_case2
 
-# Построение графиков
-fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+# Фильтруем только физически реализуемые случаи (0 ≤ e ≤ 1)
+valid_case1 = (e_case1 >= 0) & (e_case1 <= 1)
+valid_case2 = (e_case2 >= 0) & (e_case2 <= 1)
 
-# График 1: Энергии для случая 1
-axes[0,0].plot(v1_range, E_before_case1, 'b-', label='Энергия до столкновения', linewidth=2)
-axes[0,0].plot(v1_range, E_after_case1, 'r-', label='Энергия после столкновения', linewidth=2)
-axes[0,0].plot(v1_range, delta_E_case1, 'g--', label='Потеря энергии', linewidth=2)
+# Построение графиков
+fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+# График 1: Энергии для случая 1 (только valid)
+axes[0,0].plot(v1_range[valid_case1], E_before_case1[valid_case1], 'b-', 
+               label='Энергия до столкновения', linewidth=2)
+axes[0,0].plot(v1_range[valid_case1], E_after_case1[valid_case1], 'r-', 
+               label='Энергия после столкновения', linewidth=2)
+axes[0,0].plot(v1_range[valid_case1], delta_E_case1[valid_case1], 'g--', 
+               label='Потеря энергии', linewidth=2)
 axes[0,0].set_xlabel('Скорость v₁ (м/с)')
 axes[0,0].set_ylabel('Энергия (Дж)')
-axes[0,0].set_title('Случай 1: Останавливается первый шар')
+axes[0,0].set_title('Случай 1: Останавливается первый шар\n(только физически реализуемые)')
 axes[0,0].legend()
 axes[0,0].grid(True)
 
 # График 2: Коэффициент восстановления для случая 1
-axes[0,1].plot(v1_range, e_case1, 'purple', linewidth=2)
+axes[0,1].plot(v1_range[valid_case1], e_case1[valid_case1], 'purple', linewidth=2)
 axes[0,1].set_xlabel('Скорость v₁ (м/с)')
 axes[0,1].set_ylabel('Коэффициент восстановления e')
-axes[0,1].set_title('Коэффициент восстановления (случай 1)')
+axes[0,1].set_title('Коэффициент восстановления (случай 1)\n(0 ≤ e ≤ 1)')
 axes[0,1].grid(True)
+axes[0,1].set_ylim(-0.1, 1.1)
 
-# График 3: Энергии для случая 2
-axes[1,0].plot(v1_range, E_before_case2, 'b-', label='Энергия до столкновения', linewidth=2)
-axes[1,0].plot(v1_range, E_after_case2, 'r-', label='Энергия после столкновения', linewidth=2)
-axes[1,0].plot(v1_range, delta_E_case2, 'g--', label='Потеря энергии', linewidth=2)
+# График 3: Энергии для случая 2 (только valid)
+axes[1,0].plot(v1_range[valid_case2], E_before_case2[valid_case2], 'b-', 
+               label='Энергия до столкновения', linewidth=2)
+axes[1,0].plot(v1_range[valid_case2], E_after_case2[valid_case2], 'r-', 
+               label='Энергия после столкновения', linewidth=2)
+axes[1,0].plot(v1_range[valid_case2], delta_E_case2[valid_case2], 'g--', 
+               label='Потеря энергии', linewidth=2)
 axes[1,0].set_xlabel('Скорость v₁ (м/с)')
 axes[1,0].set_ylabel('Энергия (Дж)')
-axes[1,0].set_title('Случай 2: Останавливается второй шар')
+axes[1,0].set_title('Случай 2: Останавливается второй шар\n(только физически реализуемые)')
 axes[1,0].legend()
 axes[1,0].grid(True)
 
 # График 4: Коэффициент восстановления для случая 2
-axes[1,1].plot(v1_range, e_case2, 'purple', linewidth=2)
+axes[1,1].plot(v1_range[valid_case2], e_case2[valid_case2], 'purple', linewidth=2)
 axes[1,1].set_xlabel('Скорость v₁ (м/с)')
 axes[1,1].set_ylabel('Коэффициент восстановления e')
-axes[1,1].set_title('Коэффициент восстановления (случай 2)')
+axes[1,1].set_title('Коэффициент восстановления (случай 2)\n(0 ≤ e ≤ 1)')
 axes[1,1].grid(True)
+axes[1,1].set_ylim(-0.1, 1.1)
 
 plt.tight_layout()
 plt.show()
 
-# Дополнительный график: скорости после столкновения
-plt.figure(figsize=(10, 6))
-plt.plot(v1_range, u2_case1, 'b-', label='Скорость второго шара (случай 1)', linewidth=2)
-plt.plot(v1_range, u1_case2, 'r-', label='Скорость первого шара (случай 2)', linewidth=2)
+# Дополнительный график: скорости после столкновения (только valid)
+plt.figure(figsize=(12, 8))
+
+plt.subplot(2, 1, 1)
+plt.plot(v1_range[valid_case1], u2_case1[valid_case1], 'b-', 
+         label='Скорость второго шара u₂', linewidth=2)
+plt.axhline(y=0, color='r', linestyle='--', label='Первый шар остановился (u₁ = 0)')
 plt.xlabel('Скорость v₁ (м/с)')
-plt.ylabel('Скорость после столкновения (м/с)')
-plt.title('Скорости шаров после столкновения')
+plt.ylabel('Скорость (м/с)')
+plt.title('Случай 1: Скорости после столкновения (останавливается первый шар)')
 plt.legend()
 plt.grid(True)
-plt.show()
+
+plt.subplot(2, 1, 2)
+plt.plot(v1_range[valid_case2], u1_case2[valid_case2], 'r-', 
+         label='Скорость первого шара u₁', linewidth=2)
+plt.axhline(y=0, color='b', linestyle='--', label='Второй шар остановился (u₂ = 0)')
+plt.xlabel('Скорость v₁ (м/с)')
+plt.ylabel('Скорость (м/с)')
+plt.title('Случай 2: Скорости после столкновения (останавливается второй шар)')
+plt.legend()
+plt.grid(True)
+
+plt.tight_layout()
