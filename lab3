@@ -1,0 +1,96 @@
+
+# Область = пересечение четырёх окружностей радиуса sqrt(2),
+# центры: (0,1), (1,0), (0,-1), (-1,0).
+#
+# Интеграл: z = x + y^2
+
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+
+pd.set_option("display.max_columns", None)
+
+# Проверка попадания в область
+r2 = 2.0
+def in_region(x, y):
+    return ((x**2 + (y-1)**2) <= r2) & \
+           (((x-1)**2 + y**2) <= r2) & \
+           ((x**2 + (y+1)**2) <= r2) & \
+           (((x+1)**2 + y**2) <= r2)
+
+# Ограничивающий квадрат
+xmin, xmax = -1.0, 1.0
+ymin, ymax = -1.0, 1.0
+box_area = (xmax - xmin) * (ymax - ymin)
+
+def monte_carlo(N, seed=None):
+    rng = np.random.default_rng(seed)
+    xs = rng.uniform(xmin, xmax, N)
+    ys = rng.uniform(ymin, ymax, N)
+
+    inside = in_region(xs, ys)
+    count_inside = inside.sum()
+    frac = count_inside / N
+    area_est = frac * box_area
+
+    z = xs + ys**2
+    integral_est = box_area * (z * inside).mean()
+
+    std_area = box_area * np.sqrt(frac * (1 - frac) / N)
+
+    vals = z * inside
+    var_vals = vals.var(ddof=1) if N > 1 else 0.0
+    std_integral = box_area * np.sqrt(var_vals / N)
+
+    return {
+        "N": N,
+        "Попало внутрь": int(count_inside),
+        "Площадь": area_est,
+        "Стандартная_ошибка_площади": std_area,
+        "Интеграл": integral_est,
+        "Стандартная_ошибка_интеграла": std_integral
+    }
+
+# Разные объёмы испытаний
+Ns = [100, 1000, 5*(10**3), 10**4, 5*(10**4), 10**5, 10**8]
+results = [monte_carlo(N, seed=42) for N in Ns]
+df = pd.DataFrame(results)
+
+print("=== РЕЗУЛЬТАТЫ МОНТЕ-КАРЛО ===")
+print(df.round(8))
+
+# Визуализация области
+Nplot = 20000
+rng = np.random.default_rng(123)
+xs = rng.uniform(xmin, xmax, Nplot)
+ys = rng.uniform(ymin, ymax, Nplot)
+inside = in_region(xs, ys)
+
+plt.figure(figsize=(6,6))
+plt.scatter(xs[~inside], ys[~inside], s=1)
+plt.scatter(xs[inside], ys[inside], s=1)
+plt.gca().set_aspect('equal', adjustable='box')
+plt.title("Выборка точек (внутри/снаружи области)")
+plt.xlabel("x")
+plt.ylabel("y")
+plt.xlim(xmin, xmax)
+plt.ylim(ymin, ymax)
+plt.show()
+
+# График сходимости площади
+plt.figure(figsize=(6,4))
+plt.errorbar(df["N"], df["Площадь"], yerr=df["Стандартная_ошибка_площади"], marker="o")
+plt.xscale("log")
+plt.title("Сходимость оценки площади")
+plt.xlabel("N (лог. шкала)")
+plt.ylabel("Площадь ± стандартная ошибка")
+plt.show()
+
+# График сходимости интеграла
+plt.figure(figsize=(6,4))
+plt.errorbar(df["N"], df["Интеграл"], yerr=df["Стандартная_ошибка_интеграла"], marker="o")
+plt.xscale("log")
+plt.title("Сходимость оценки интеграла ∫∫(x + y²) dA")
+plt.xlabel("N (лог. шкала)")
+plt.ylabel("Интеграл ± стд. ошибка")
+plt.show()
