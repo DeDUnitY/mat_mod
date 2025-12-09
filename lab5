@@ -1,124 +1,149 @@
-# transport_solution.py
 import numpy as np
 import matplotlib.pyplot as plt
 
-# --- данные задачи ---
-V = lambda x: x + 1.0
-f = lambda x: -19.1
-U0 = lambda x: np.minimum(0.0, (x - 3.0)*(x - 8.0))
-g = lambda t: t*(100.0 - t)/2500.0
+# ----- параметры задачи -----
+V = lambda x: x + 1
+f_val = -19.1
+U0 = lambda x: np.minimum(0, (x - 3) * (x - 8))
+Ub = lambda t: t * (100 - t) / 2500
 
-# --- аналитическое решение в точке (t, x) ---
-def U_analytic(t, x):
-    # x, t могут быть numpy arrays (broadcastable)
-    x = np.asarray(x)
-    # используем безопасные вычисления: xi = (x+1) * exp(-t) - 1
-    xi = (x + 1.0) * np.exp(-t) - 1.0
-    U = np.empty_like(xi, dtype=float)
-    # случай: источник из начального условия
-    mask_init = xi >= 0
-    if np.any(mask_init):
-        U[mask_init] = U0(xi[mask_init]) - 19.1 * t
-    # случай: источник из граничного условия x=0
-    if np.any(~mask_init):
-        # s_b = t - ln(x+1)
-        sb = t - np.log(x[~mask_init] + 1.0)
-        U[~mask_init] = g(sb) - 19.1 * np.log(x[~mask_init] + 1.0)
+x_min, x_max = 0, 10
+t_min, t_max = 0, 100
+
+
+# Аналитическое решение методом характеристик
+def analytical_solution(t, x):
+    t = np.atleast_1d(t)
+    x = np.atleast_1d(x)
+    
+    if t.ndim == 1 and x.ndim == 1 and len(t) > 1 and len(x) > 1:
+        T, X = np.meshgrid(t, x, indexing='ij')
+    else:
+        T, X = t, x
+    
+    U = np.zeros_like(T, dtype=float)
+    x0 = (X + 1) * np.exp(-T) - 1
+    
+    from_initial = (x0 >= 0) & (x0 <= 10)
+    U[from_initial] = U0(x0[from_initial]) + f_val * T[from_initial]
+    
+    from_boundary = ~from_initial
+    t0 = T[from_boundary] - np.log(X[from_boundary] + 1)
+    valid_t0 = t0 >= 0
+    
+    U_boundary = np.zeros_like(t0)
+    U_boundary[valid_t0] = Ub(t0[valid_t0]) + f_val * (T[from_boundary][valid_t0] - t0[valid_t0])
+    U[from_boundary] = U_boundary
+    
     return U
 
-# --- явная схема upwind ---
-def explicit_upwind(x_grid, t_grid):
-    nx = len(x_grid)
-    nt = len(t_grid)
-    dx = x_grid[1] - x_grid[0]
-    dt = t_grid[1] - t_grid[0]
+
+# Явная схема (с автоматическим выбором dt для устойчивости)
+def explicit_scheme(nx, nt_hint):
+    x = np.linspace(x_min, x_max, nx)
+    dx = x[1] - x[0]
+    
+    # Выбираем dt для выполнения CFL < 1
+    V_max = V(x_max)  # = 11
+    dt_max = 0.9 * dx / V_max  # CFL = 0.9
+    nt = max(nt_hint, int((t_max - t_min) / dt_max) + 1)
+    
+    t = np.linspace(t_min, t_max, nt)
+    dt = t[1] - t[0]
+    
     U = np.zeros((nt, nx))
-    # начальное условие
-    U[0, :] = U0(x_grid)
-    # граничное
-    U[:, 0] = g(t_grid)
-    # шаги
-    for n in range(0, nt-1):
-        for i in range(1, nx):
-            Vi = V(x_grid[i])
-            U[n+1, i] = (U[n, i]
-                         - (dt/dx) * Vi * (U[n, i] - U[n, i-1])
-                         + dt * f(x_grid[i]))
-        # (U[n+1,0] уже задано граничным условием)
-    return U
+    U[0, :] = U0(x)
+    Vx = V(x)
+    
+    for n in range(nt - 1):
+        U[n + 1, 0] = Ub(t[n + 1])
+        for j in range(1, nx):
+            U[n + 1, j] = (
+                U[n, j] 
+                - dt / dx * Vx[j] * (U[n, j] - U[n, j - 1]) 
+                + dt * f_val
+            )
+    
+    return x, t, U, dx, dt
 
-# --- неявная схема upwind (решение треугольной системы) ---
-def implicit_upwind(x_grid, t_grid):
-    nx = len(x_grid)
-    nt = len(t_grid)
-    dx = x_grid[1] - x_grid[0]
-    dt = t_grid[1] - t_grid[0]
+
+# Неявная схема
+def implicit_scheme(nx, nt):
+    x = np.linspace(x_min, x_max, nx)
+    t = np.linspace(t_min, t_max, nt)
+    dx = x[1] - x[0]
+    dt = t[1] - t[0]
+    
     U = np.zeros((nt, nx))
-    U[0, :] = U0(x_grid)
-    U[:, 0] = g(t_grid)
-    # для каждого временного шага решаем по i прямым ходом
-    for n in range(0, nt-1):
-        rhs = U[n, :].copy()
-        # задать U_{0}^{n+1}
-        U[n+1, 0] = g(t_grid[n+1])
-        # решаем последовательно i=1..nx-1
-        for i in range(1, nx):
-            Vi = V(x_grid[i])
-            a = 1.0 + (dt/dx) * Vi
-            b = - (dt/dx) * Vi  # множитель при U_{i-1}^{n+1}
-            # уравнение: a * U_i^{n+1} + b * U_{i-1}^{n+1} = rhs[i] + dt*f(x_i)
-            rhs_i = rhs[i] + dt * f(x_grid[i])
-            U[n+1, i] = (rhs_i - b * U[n+1, i-1]) / a
-    return U
+    U[0, :] = U0(x)
+    Vx = V(x)
+    
+    for n in range(nt - 1):
+        U[n + 1, 0] = Ub(t[n + 1])
+        for j in range(1, nx):
+            coef = dt / dx * Vx[j]
+            U[n + 1, j] = (U[n, j] + coef * U[n + 1, j - 1] + dt * f_val) / (1 + coef)
+    
+    return x, t, U, dx, dt
 
-# --- вспомогательная функция RMS ---
-def rms_error(U_num, t_grid, x_grid):
-    errors = []
-    for n, t in enumerate(t_grid):
-        U_an = U_analytic(t, x_grid)
-        err = np.sqrt(np.mean((U_num[n, :] - U_an)**2))
-        errors.append(err)
-    return np.array(errors)
 
-# --- пример запуска и визуализации ---
-def run_example(dx=0.1, dt_factor=0.9, T=20.0):
-    # dx шаг по x
-    x = np.arange(0.0, 10.0 + 1e-12, dx)
-    # dt, выбираем по CFL для явной: dt = dt_factor * dx / maxV
-    maxV = V(10.0)  # 11
-    dt = dt_factor * dx / maxV
-    t = np.arange(0.0, T + 1e-12, dt)
-    print(f"nx={len(x)}, nt={len(t)}, dx={dx:.4g}, dt={dt:.4g}, T={T}")
+steps = [
+    (50, 500),
+    (100, 1000),
+    (150, 1500),
+    (200, 2000),
+    (300, 3000)
+]
 
-    U_ex = explicit_upwind(x, t)
-    U_im = implicit_upwind(x, t)
+errors_exp = []
+errors_imp = []
+results = []
 
-    # аналитика в финальный момент
-    U_an_final = U_analytic(t[-1], x)
+print("\nРасчёт для разных шагов сетки:")
+print("-" * 60)
 
-    # RMS по времени
-    rms_ex = rms_error(U_ex, t, x)
-    rms_im = rms_error(U_im, t, x)
+for nx, nt in steps:
+    # Явная схема
+    x, t, Ue, dx, dt = explicit_scheme(nx, nt)
+    Ua = analytical_solution(t, x)
+    rmse_exp = np.sqrt(np.mean((Ue - Ua) ** 2))
+    errors_exp.append(rmse_exp)
+    
+    # Неявная схема
+    x2, t2, Ui, dx2, dt2 = implicit_scheme(nx, nt)
+    Ua2 = analytical_solution(t2, x2)
+    rmse_imp = np.sqrt(np.mean((Ui - Ua2) ** 2))
+    errors_imp.append(rmse_imp)
+    
+    results.append((nx, nt, Ue, Ui, Ua2, x2, t2))
+    
+    print(f"nx={nx:3d}, nt={nt:4d} | dx={dx:.4f} | "
+          f"Среднеквадратичное отклонение явн={rmse_exp:.4f}, Среднеквадратичное отклонение неявн={rmse_imp:.4f}")
 
-    # график в последний момент
-    plt.figure(figsize=(8,5))
-    plt.plot(x, U_an_final, label='Аналитическое', linewidth=2)
-    plt.plot(x, U_ex[-1,:], '--', label='Явная upwind (числ.)')
-    plt.plot(x, U_im[-1,:], ':', label='Неявная upwind (числ.)')
-    plt.xlabel('x'); plt.ylabel('U(t,x)'); plt.title(f't={t[-1]:.3f}')
-    plt.legend(); plt.grid(True)
-    plt.show()
+# ----- визуализация -----
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
-    # RMS по времени
-    plt.figure(figsize=(8,4))
-    plt.plot(t, rms_ex, label='RMS явной')
-    plt.plot(t, rms_im, label='RMS неявной')
-    plt.yscale('log')
-    plt.xlabel('t'); plt.ylabel('RMS'); plt.legend(); plt.grid(True)
-    plt.show()
+# 1. График Среднеквадратичное отклонения
+axes[0].plot([s[0] for s in steps], errors_exp, 'o-', linewidth=2, markersize=8, label="Явная схема")
+axes[0].plot([s[0] for s in steps], errors_imp, 's-', linewidth=2, markersize=8, label="Неявная схема")
+axes[0].set_xlabel("Число узлов nx", fontsize=12)
+axes[0].set_ylabel("Среднеквадратичное отклонение", fontsize=12)
+axes[0].set_title("Сходимость численных схем", fontsize=14)
+axes[0].legend(fontsize=11)
+axes[0].grid(True, alpha=0.3)
 
-    return x, t, U_ex, U_im
+# 2. Сравнение решений (последний момент времени, мелкая сетка)
+nx, nt, Ue, Ui, Ua, x, t = results[-1]
+axes[1].plot(x, Ua[-1, :], 'k-', linewidth=2, label='Аналитическое')
+axes[1].plot(x, Ue[-1, :], 'b--', linewidth=1.5, label='Явная схема')
+axes[1].plot(x, Ui[-1, :], 'r:', linewidth=1.5, label='Неявная схема')
+axes[1].set_xlabel('x', fontsize=12)
+axes[1].set_ylabel('U(t=100, x)', fontsize=12)
+axes[1].set_title('Сравнение решений при t = 100', fontsize=14)
+axes[1].legend(fontsize=11)
+axes[1].grid(True, alpha=0.3)
 
-# Запуск примера
-if __name__ == "__main__":
-    x, t, U_ex, U_im = run_example(dx=0.2, dt_factor=0.9, T=20.0)
+plt.tight_layout()
+plt.show()
+
+print("\nГотово!")
