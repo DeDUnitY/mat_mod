@@ -1,0 +1,225 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Параметры задачи
+x_min, x_max = 0.0, 10.0
+t_min, t_max = 0.0, 100.0
+
+
+def V(x): return x + 2
+
+
+def f(x): return -25.4  # Это скалярная функция!
+
+
+def U0(x): return np.maximum(0.0, (x - 5) * (10 - x))
+
+
+def Ub(t): return t * (t - 20) ** 2 / 200000.0
+
+
+# Аналитическое решение - ИСПРАВЛЕНО
+def analytical(t, x):
+    # Преобразуем входы в массивы numpy
+    x = np.asarray(x)
+
+    # Если t - скаляр, создаем массив такой же длины как x
+    if np.isscalar(t):
+        t = np.full_like(x, t)
+    else:
+        t = np.asarray(t)
+
+    # Создаем массив для результата
+    U = np.zeros_like(x)
+
+    # Вычисляем x0
+    x0 = (x + 2) * np.exp(-t) - 2
+
+    # Маска для x0 >= 0
+    mask = x0 >= 0
+
+    # Обработка случая x0 >= 0
+    if np.any(mask):
+        U_init = np.maximum(0.0, (x0[mask] - 5) * (10 - x0[mask]))
+        U[mask] = U_init - 25.4 * t[mask]
+
+    # Обработка случая x0 < 0
+    if np.any(~mask):
+        # Используем индексацию только по x (не по t)
+        xb = x[~mask]
+        tb = t[~mask] if t.shape == x.shape else t  # Проверяем размерность
+
+        # Исправлено: t0 вычисляется правильно
+        t0 = tb - np.log((xb + 2) / 2)
+        U[~mask] = Ub(t0) - 25.4 * np.log((xb + 2) / 2)
+
+    # Граничное условие при x = 0
+    zero_mask = (x == 0)
+    if np.any(zero_mask):
+        # Берем соответствующее значение t для x=0
+        t_zero = t[zero_mask] if t.shape == x.shape else t
+        U[zero_mask] = Ub(t_zero)
+
+    return U
+
+
+# Численные схемы
+def explicit(U, V_arr, f_value, dt, dx, bc):
+    """Явная схема"""
+    U_new = np.zeros_like(U)
+    U_new[0] = bc
+    for j in range(1, len(U)):
+        U_new[j] = U[j] - dt * V_arr[j] * (U[j] - U[j - 1]) / dx + dt * f_value
+    return U_new
+
+
+def is_diverged(U):
+    """Проверка на расходимость решения"""
+    return np.any(~np.isfinite(U)) or np.max(np.abs(U)) > 1e10
+
+
+def implicit(U, V_arr, f_value, dt, dx, bc):
+    """Неявная схема"""
+    U_new = np.zeros_like(U)
+    U_new[0] = bc
+    for j in range(1, len(U)):
+        coeff = V_arr[j] * dt / dx
+        # Используем f_value как скаляр
+        U_new[j] = (U[j] + dt * f_value + coeff * U_new[j - 1]) / (1 + coeff)
+    return U_new
+
+
+# Параметры расчетов
+grids = [
+    {"dx": 0.1, "dt": 0.008, "label": "1: dx=0.1, dt=0.008"},
+    {"dx": 0.1, "dt": 0.02, "label": "2: dx=0.1, dt=0.02 (CFL>1)"},
+    {"dx": 0.05, "dt": 0.004, "label": "3: dx=0.05, dt=0.004"},
+    {"dx": 0.05, "dt": 0.01, "label": "4: dx=0.05, dt=0.01 (CFL>1)"},
+    {"dx": 0.2, "dt": 0.01, "label": "5: dx=0.2, dt=0.01"}
+]
+
+def rms(a, b):
+    """Среднеквадратичная ошибка"""
+    diff = a - b
+    if np.any(~np.isfinite(diff)):
+        return np.inf
+    return np.sqrt(np.mean(diff ** 2))
+
+
+results = []
+for g in grids:
+    dx, dt = g["dx"], g["dt"]
+    # Исправлен расчет CFL
+    CFL = dt * (x_max + 2) / dx  # V(x_max) = x_max + 2 = 10 + 2 = 12
+    g["CFL"] = CFL
+
+    x = np.arange(x_min, x_max + dx / 2, dx)
+    Nt = int((t_max - t_min) / dt) + 1
+    t = np.linspace(t_min, t_max, Nt)
+
+    V_arr = V(x)  # Это массив
+    f_value = f(x_min)  # Это скаляр
+
+    U_exp = U0(x.copy())
+    U_imp = U0(x.copy())
+    exp_diverged = False
+
+    for n in range(Nt - 1):
+        bc_next = Ub(t[n + 1])
+        
+        # Явная схема — проверяем на расходимость
+        if not exp_diverged:
+            U_exp = explicit(U_exp, V_arr, f_value, dt, dx, bc_next)
+            if is_diverged(U_exp):
+                exp_diverged = True
+                U_exp = np.full_like(U_exp, np.nan)  # Помечаем как расходящееся
+        
+        # Неявная схема — всегда устойчива
+        U_imp = implicit(U_imp, V_arr, f_value, dt, dx, bc_next)
+
+    # Аналитическое решение для конечного времени
+    U_ana = analytical(t_max, x)
+
+    g["RMS_exp"] = rms(U_exp, U_ana) if not exp_diverged else np.inf
+    g["RMS_imp"] = rms(U_imp, U_ana)
+    g["x"], g["U_exp"], g["U_imp"], g["U_ana"] = x, U_exp, U_imp, U_ana
+    g["exp_diverged"] = exp_diverged
+    results.append(g)
+
+# Вывод таблицы
+print("=" * 75)
+print("РЕЗУЛЬТАТЫ РАСЧЕТОВ (t=100)")
+print("=" * 75)
+print(f"{'№':<3} {'dx':<6} {'dt':<8} {'CFL':<6} {'RMS_явн':<15} {'RMS_неявн':<12}")
+for i, g in enumerate(results):
+    rms_exp_str = "расходится" if g["exp_diverged"] else f"{g['RMS_exp']:.2e}"
+    print(f"{i + 1:<3} {g['dx']:<6.3f} {g['dt']:<8.4f} {g['CFL']:<6.2f} "
+          f"{rms_exp_str:<15} {g['RMS_imp']:<12.2e}")
+
+# Графики
+fig, axes = plt.subplots(3, 2, figsize=(12, 10))
+axes = axes.flatten()
+for idx, g in enumerate(results):
+    ax = axes[idx]
+    ax.plot(g["x"], g["U_ana"], 'k-', lw=2, label='Аналит.')
+    ax.plot(g["x"], g["U_imp"], 'b:', lw=2, label='Неявная')
+    
+    # Проверяем, расходится ли явная схема
+    if g["exp_diverged"]:
+        # Ограничиваем масштаб для читаемости
+        y_min = min(g["U_ana"].min(), g["U_imp"].min()) - 5
+        y_max = max(g["U_ana"].max(), g["U_imp"].max()) + 5
+        ax.set_ylim(y_min, y_max)
+        ax.set_title(f"{g['label']}\nCFL={g['CFL']:.2f} — явная схема нестабильна!")
+        ax.text(0.5, 0.5, 'Явная схема:\nрасходится!', transform=ax.transAxes,
+                fontsize=12, color='red', ha='center', va='center',
+                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+    else:
+        ax.plot(g["x"], g["U_exp"], 'r--', lw=1.5, label='Явная')
+        ax.set_title(f"{g['label']}\nCFL={g['CFL']:.2f}")
+    
+    ax.grid(True, alpha=0.3)
+    ax.legend(fontsize=8)
+axes[-1].axis('off')
+plt.tight_layout()
+
+# 2D график аналитического решения
+fig2, ax2 = plt.subplots(figsize=(10, 5))
+X_fine = np.linspace(x_min, x_max, 100)
+T_fine = np.linspace(t_min, 20, 50)
+X, T = np.meshgrid(X_fine, T_fine)
+U_2d = analytical(T, X)
+contour = ax2.contourf(X, T, U_2d, levels=30, cmap='viridis')
+ax2.set_xlabel('x')
+ax2.set_ylabel('t')
+ax2.set_title('Аналитическое решение U(t,x)')
+plt.colorbar(contour, ax=ax2)
+
+# График ошибок
+fig3, ax3 = plt.subplots(figsize=(8, 5))
+ind = np.arange(len(results))
+width = 0.35
+
+# Для расходящихся схем показываем очень большое значение
+rms_exp_vals = [g["RMS_exp"] if not g["exp_diverged"] else 1e12 for g in results]
+rms_imp_vals = [g["RMS_imp"] for g in results]
+
+bars_exp = ax3.bar(ind - width / 2, rms_exp_vals, width, color='r', alpha=0.7, label='Явная')
+bars_imp = ax3.bar(ind + width / 2, rms_imp_vals, width, color='b', alpha=0.7, label='Неявная')
+
+# Помечаем расходящиеся столбцы
+for i, g in enumerate(results):
+    if g["exp_diverged"]:
+        ax3.text(ind[i] - width / 2, 1e12, '∞', ha='center', va='bottom', 
+                 fontsize=14, color='red', fontweight='bold')
+
+ax3.set_xlabel('Набор параметров')
+ax3.set_ylabel('RMS ошибка (log)')
+ax3.set_title('Сравнение ошибок схем')
+ax3.set_xticks(ind)
+ax3.set_xticklabels([f"{i + 1}" for i in ind])
+ax3.set_yscale('log')
+ax3.legend()
+ax3.grid(True, alpha=0.3)
+
+plt.show()
