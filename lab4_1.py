@@ -56,8 +56,11 @@ def calculate_fractal_dimension(points, center):
     distances = np.sqrt((points[:, 0] - center) ** 2 + (points[:, 1] - center) ** 2)
     max_dist = np.max(distances)
     
-    # Радиусы для анализа
-    radii = np.linspace(5, max_dist * 0.9, 30)
+    # Радиусы для анализа - логарифмическая сетка для равномерного покрытия в лог-координатах
+    # Это дает более точную оценку размерности, так как точки равномерно распределены в log(r)
+    min_r = max(5, max_dist * 0.05)  # Минимальный радиус (не менее 5, но не менее 5% от максимума)
+    max_r = max_dist * 0.9  # Максимальный радиус (90% от максимума, чтобы избежать краевых эффектов)
+    radii = np.logspace(np.log10(min_r), np.log10(max_r), 30)  # 30 радиусов в логарифмическом масштабе
     counts = []
     
     for r in radii:
@@ -100,6 +103,13 @@ stuck_points = [(CENTER, CENTER)]
 max_aggregate_radius = 1
 launch_radius = START_RADIUS
 
+# Список для сохранения снимков агрегата на разных этапах
+snapshots = []  # Каждый элемент: (количество_точек, список_точек)
+
+# Определяем этапы для сохранения снимков
+# Будем сохранять на 100, 500, 1000, 1500, 2000, 2500, 3000 точках
+snapshot_stages = [100, 500, 1000, 1500, 2000, 2500, 3000]
+
 print("Запуск моделирования DLA...")
 
 for i in range(N_PARTICLES):
@@ -129,6 +139,11 @@ for i in range(N_PARTICLES):
             grid[y, x] = 1
             stuck_points.append((x, y))
             
+            # Сохраняем снимок, если достигли нужного этапа
+            current_count = len(stuck_points)
+            if current_count in snapshot_stages:
+                snapshots.append((current_count, stuck_points.copy()))
+            
             # Обновляем радиус агрегата
             particle_dist = np.sqrt((x - CENTER) ** 2 + (y - CENTER) ** 2)
             if particle_dist > max_aggregate_radius:
@@ -142,6 +157,10 @@ for i in range(N_PARTICLES):
         print(f"Частиц: {i + 1}/{N_PARTICLES}, радиус агрегата: {max_aggregate_radius:.1f}")
 
 print("Моделирование завершено!")
+
+# Добавляем финальный снимок, если его еще нет
+if len(stuck_points) not in snapshot_stages:
+    snapshots.append((len(stuck_points), stuck_points.copy()))
 
 # --------------------------
 # РАСЧЕТ ФРАКТАЛЬНОЙ РАЗМЕРНОСТИ
@@ -162,10 +181,51 @@ print("=" * 50)
 # --------------------------
 # ВИЗУАЛИЗАЦИЯ
 # --------------------------
-fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
-# График 1: Агрегат
-ax1 = axes[0]
+# График 1: Все этапы роста агрегата
+n_snapshots = len(snapshots)
+n_cols = 3
+n_rows = (n_snapshots + n_cols - 1) // n_cols  # Округление вверх
+
+fig1, axes1 = plt.subplots(n_rows, n_cols, figsize=(15, 5 * n_rows))
+if n_snapshots == 1:
+    axes1 = [axes1]
+else:
+    axes1 = axes1.flatten()
+
+for idx, (count, points) in enumerate(snapshots):
+    ax = axes1[idx]
+    points_arr = np.array(points)
+    X = points_arr[:, 0] - CENTER
+    Y = points_arr[:, 1] - CENTER
+    ax.scatter(X, Y, s=1, color="blue", alpha=0.7)
+    ax.scatter(0, 0, s=50, color="red", marker="x", label="Центр")
+    
+    # Расчет размерности для этого этапа
+    D_stage, _, _ = calculate_fractal_dimension(points_arr, CENTER)
+    
+    ax.set_aspect("equal")
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    title = f"N={count}"
+    if D_stage is not None:
+        title += f", D={D_stage:.2f}"
+    ax.set_title(title)
+    ax.grid(True, alpha=0.3)
+
+# Скрываем лишние подграфики
+for idx in range(n_snapshots, len(axes1)):
+    axes1[idx].axis('off')
+
+plt.suptitle("Рост DLA агрегата на разных этапах", fontsize=14, y=1.0)
+plt.tight_layout()
+plt.show()
+
+# График 2: Финальный агрегат и расчет размерности
+fig2, axes2 = plt.subplots(1, 2, figsize=(14, 6))
+
+# График 2.1: Финальный агрегат
+ax1 = axes2[0]
 X = stuck_points[:, 0] - CENTER
 Y = stuck_points[:, 1] - CENTER
 ax1.scatter(X, Y, s=1, color="blue", alpha=0.7)
@@ -177,8 +237,8 @@ ax1.set_title(f"DLA агрегат (N={len(stuck_points)}, D={D:.2f})" if D else
 ax1.legend()
 ax1.grid(True, alpha=0.3)
 
-# График 2: Зависимость N(r) для расчета размерности
-ax2 = axes[1]
+# График 2.2: Зависимость N(r) для расчета размерности
+ax2 = axes2[1]
 if radii is not None:
     ax2.loglog(radii, counts, 'bo-', markersize=4, label='N(r) — данные')
     # Линия регрессии
