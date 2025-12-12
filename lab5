@@ -120,28 +120,31 @@ for nx, nt in steps:
     print(f"nx={nx:3d}, nt={nt:4d} | dx={dx:.4f} | "
           f"Среднеквадратичное отклонение явн={rmse_exp:.4f}, Среднеквадратичное отклонение неявн={rmse_imp:.4f}")
 
-# ----- визуализация -----
-fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+# ----- визуализация: 5 графиков для каждого варианта сетки -----
+fig, axes = plt.subplots(2, 3, figsize=(16, 10))
+axes = axes.flatten()
 
-# 1. График Среднеквадратичное отклонения
-axes[0].plot([s[0] for s in steps], errors_exp, 'o-', linewidth=2, markersize=8, label="Явная схема")
-axes[0].plot([s[0] for s in steps], errors_imp, 's-', linewidth=2, markersize=8, label="Неявная схема")
-axes[0].set_xlabel("Число узлов nx", fontsize=12)
-axes[0].set_ylabel("Среднеквадратичное отклонение", fontsize=12)
-axes[0].set_title("Сходимость численных схем", fontsize=14)
-axes[0].legend(fontsize=11)
-axes[0].grid(True, alpha=0.3)
+# 5 графиков сравнения решений для каждого варианта сетки
+for i, (nx, nt, Ue, Ui, Ua, x, t) in enumerate(results):
+    ax = axes[i]
+    ax.plot(x, Ua[-1, :], 'k-', linewidth=2, label='Аналитическое')
+    ax.plot(x, Ue[-1, :], 'b--', linewidth=1.5, label='Явная схема')
+    ax.plot(x, Ui[-1, :], 'r:', linewidth=2, label='Неявная схема')
+    ax.set_xlabel('x', fontsize=11)
+    ax.set_ylabel('U(t=100, x)', fontsize=11)
+    ax.set_title(f'Вариант {i+1}: nx={nx}, nt={nt}\n'
+                 f'RMSE явн={errors_exp[i]:.4f}, неявн={errors_imp[i]:.4f}', fontsize=11)
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3)
 
-# 2. Сравнение решений (последний момент времени, мелкая сетка)
-nx, nt, Ue, Ui, Ua, x, t = results[-1]
-axes[1].plot(x, Ua[-1, :], 'k-', linewidth=2, label='Аналитическое')
-axes[1].plot(x, Ue[-1, :], 'b--', linewidth=1.5, label='Явная схема')
-axes[1].plot(x, Ui[-1, :], 'r:', linewidth=1.5, label='Неявная схема')
-axes[1].set_xlabel('x', fontsize=12)
-axes[1].set_ylabel('U(t=100, x)', fontsize=12)
-axes[1].set_title('Сравнение решений при t = 100', fontsize=14)
-axes[1].legend(fontsize=11)
-axes[1].grid(True, alpha=0.3)
+# 6-й график: сходимость схем
+axes[5].plot([s[0] for s in steps], errors_exp, 'o-', linewidth=2, markersize=8, label="Явная схема")
+axes[5].plot([s[0] for s in steps], errors_imp, 's-', linewidth=2, markersize=8, label="Неявная схема")
+axes[5].set_xlabel("Число узлов nx", fontsize=11)
+axes[5].set_ylabel("Среднеквадратичное отклонение", fontsize=11)
+axes[5].set_title("Сходимость численных схем", fontsize=12)
+axes[5].legend(fontsize=10)
+axes[5].grid(True, alpha=0.3)
 
 plt.tight_layout()
 plt.show()
